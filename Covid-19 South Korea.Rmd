@@ -1,0 +1,407 @@
+---
+title: "Covid-19 South Korea"
+author: "Hudson Finch-Batista"
+date: "7/27/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Import installed packages, set working directory to Desktop, and read csv files
+```{r}
+library(tidyverse)
+library(plotly)
+library(lubridate)
+library(ggplot2)
+library(stringr)
+setwd("~/Desktop")
+sk_patients <-read.csv("MC/Summer 2 2020/Intro to Data Science/SKpatients.csv",stringsAsFactors = FALSE,na.strings = "")
+sk_gdp_per_capita_province <- read.csv("MC/Summer 2 2020/Intro to Data Science/SK_Regional_GDP.csv", stringsAsFactors = FALSE)
+```
+
+## Show structure of loaded csv files
+```{r}
+str(sk_patients)
+str(sk_gdp_per_capita_province)
+```
+
+## Change certain variables to factors and only select certain variables
+```{r}
+sk_patients2 <- sk_patients %>% mutate(sex = as.factor(sex), age = as.factor(age), country = as.factor(country), province = as.factor(province), city = as.factor(city), infection_case = as.factor(infection_case), state = as.factor(state)) %>% select(patient_id,sex,age,province,city,infection_case,state)
+str(sk_patients2)
+head(sk_patients2)
+
+gdp_cols <- sk_gdp_per_capita_province[1,,drop = TRUE]
+gdp_cols
+class(gdp_cols)
+gdp_cols2 <- as.vector(unlist(gdp_cols))
+class(gdp_cols2)
+
+colnames(sk_gdp_per_capita_province)<- gdp_cols2
+sk_gdp_per_capita_province
+
+sk_gdp_per_capita_province2 <- sk_gdp_per_capita_province[2:19,]
+sk_gdp_per_capita_province2
+
+sk_gdp_per_capita_province3 <- sk_gdp_per_capita_province2 %>% mutate(`By province` = as.factor(`By province`), `Regional GDP per Capita` = as.numeric(`Regional GDP per Capita`))
+
+head(sk_gdp_per_capita_province3)
+
+```
+
+```{r}
+sk_num_sex_missing <-missing_count("sex",sk_patients2)
+sk_num_age_missing <-missing_count("age",sk_patients2)
+sk_num_province_missing <-missing_count("province",sk_patients2)
+sk_num_city_missing <-missing_count("city",sk_patients2)
+sk_num_infection_case_missing <-missing_count("infection_case",sk_patients2)
+sk_num_state_missing <-missing_count("state",sk_patients2)
+
+sk_num_sex_missing
+sk_num_age_missing
+sk_num_province_missing
+sk_num_city_missing
+sk_num_infection_case_missing
+sk_num_state_missing
+```
+
+```{r}
+sk_patients3 <- sk_patients2 %>% filter(sex == "male" | sex == "female", !is.na(age),!is.na(infection_case))
+dim(sk_patients3)
+head(sk_patients3)
+
+sk_patients4 <- sk_patients3 %>% filter(state == "released" | state == "deceased")
+dim(sk_patients4)
+head(sk_patients4)
+
+```
+
+```{r}
+
+gdp_per_cap <- vector(mode = "numeric", length = nrow(sk_patients4))
+
+for(i in 1:nrow(sk_patients4)){
+  if(sk_patients4[i,"province"] == "Seoul"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[2,2]
+  }else if(sk_patients4[i,"province"] == "Busan"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[3,2]
+  }else if(sk_patients4[i,"province"] == "Daegu"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[4,2]
+  }else if(sk_patients4[i,"province"] == "Incheon"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[5,2]
+  }else if(sk_patients4[i,"province"] == "Gwangju"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[6,2]
+  }else if(sk_patients4[i,"province"] == "Daejeon"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[7,2]
+  }else if(sk_patients4[i,"province"] == "Ulsan"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[8,2]
+  }else if(sk_patients4[i,"province"] == "Sejong"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[9,2]
+  }else if(sk_patients4[i,"province"] == "Gyeonggi-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[10,2]
+  }else if(sk_patients4[i,"province"] == "Gangwon-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[11,2]
+  }else if(sk_patients4[i,"province"] == "Chungcheongbuk-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[12,2]
+  }else if(sk_patients4[i,"province"] == "Chungcheongnam-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[13,2]
+  }else if(sk_patients4[i,"province"] == "Jeollabuk-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[14,2]
+  }else if(sk_patients4[i,"province"] == "Jeollanam-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[15,2]
+  }else if(sk_patients4[i,"province"] == "Gyeongsangbuk-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[16,2]
+  }else if(sk_patients4[i,"province"] == "Gyeongsangnam-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[17,2]
+  }else if(sk_patients4[i,"province"] == "Jeju-do"){
+    gdp_per_cap[i] = sk_gdp_per_capita_province3[18,2]
+  }
+}
+
+gdp_per_cap
+sk_patients_complete <- cbind(sk_patients4,gdp_per_cap)
+head(sk_patients_complete)
+
+```
+
+
+
+```{r}
+
+sk_patients_complete$age
+
+age2 <- vector(mode = "numeric",length = nrow(sk_patients_complete))
+
+set.seed(123)
+for(i in 1:nrow(sk_patients_complete)){
+  if(sk_patients_complete[i,"age"] == "0s"){
+    age2[i] = sample(0:10)
+  }else if(sk_patients_complete[i,"age"] == "10s"){
+    age2[i] = sample(10:20)
+  }else if(sk_patients_complete[i,"age"] == "20s"){
+    age2[i] = sample(20:30)
+  }else if(sk_patients_complete[i,"age"] == "30s"){
+    age2[i] = sample(30:40)
+  }else if(sk_patients_complete[i,"age"] == "40s"){
+    age2[i] = sample(40:50)
+  }else if(sk_patients_complete[i,"age"] == "50s"){
+    age2[i] = sample(50:60)
+  }else if(sk_patients_complete[i,"age"] == "60s"){
+    age2[i] = sample(60:70)
+  }else if(sk_patients_complete[i,"age"] == "70s"){
+    age2[i] = sample(70:80)
+  }else if(sk_patients_complete[i,"age"] == "80s"){
+    age2[i] = sample(80:90)
+  }else if(sk_patients_complete[i,"age"] == "90s"){
+    age2[i] = sample(90:100)
+  }else if(sk_patients_complete[i,"age"] == "100s"){
+    age2[i] = sample(100:110)
+  }
+}
+
+
+sk_patients_complete2 <- cbind(sk_patients_complete,age2)
+head(sk_patients_complete2)
+
+```
+
+```{r}
+sk_deaths <- sk_patients_complete2 %>% filter(state == "deceased")
+dim(sk_deaths)
+
+sk_patients_complete3 <- sk_patients_complete2 %>% filter(!(infection_case == "etc"))
+
+sk_deaths2 <- sk_patients_complete3 %>% filter(state == "deceased")
+dim(sk_deaths2)
+```
+
+
+
+```{r}
+infection_case_counts <- table(sk_patients_complete3$infection_case)
+infection_case_counts
+
+infection_case_counts2 <- subset(data.frame(infection_case_counts), Freq > 0)
+
+case_types <- vector(mode = "character", length = nrow(sk_patients_complete3))
+case_types1 <- factor(case_types,levels = c("Gym","Church","Hospital","Nursing Home","Day Care Center","Patient Contact","Insurance Company","Overseas","Nightclubs/Bars","Richway Product Retailer","Homeless Shelter","Warehouse", "Call Center","Apartments","Government"))
+length(case_types1)
+
+infection_case_levels <- levels(sk_patients_complete3$infection_case)
+infection_case_levels
+length(infection_case_levels)
+class(infection_case_levels)
+
+case_type_indices <- matrix(nrow = 51, ncol = 2, byrow = TRUE)
+case_type_indices
+
+case_type_indices2 <- data.frame(case_type_indices)
+case_type_indices2
+
+rownames(case_type_indices2) <- infection_case_levels
+case_type_indices2
+
+for(i in 1:length(infection_case_levels)){
+  if(str_detect(infection_case_levels[i],"Biblical")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Biblical")
+} else if(str_detect(infection_case_levels[i],"Nursing")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Nursing")
+} else if(str_detect(infection_case_levels[i],"Ministry")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Ministry")
+} else if(str_detect(infection_case_levels[i],"Karaoke")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Karaoke")
+}else if(str_detect(infection_case_levels[i],"Hospital")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Hospital")
+}else if(str_detect(infection_case_levels[i],"patient")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"patient")
+}else if(str_detect(infection_case_levels[i],"Logistics Center")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Logistics Center")
+}else if(str_detect(infection_case_levels[i],"Call Center")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Call Center")
+}else if(str_detect(infection_case_levels[i],"Community Center")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Community Center")
+}else if(str_detect(infection_case_levels[i],"APT")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"APT")
+}else if(str_detect(infection_case_levels[i],"Church")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Church")
+}else if(str_detect(infection_case_levels[i],"Silver")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Silver")
+}else if(str_detect(infection_case_levels[i],"gym")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"gym")
+}else if(str_detect(infection_case_levels[i],"Clubs")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Clubs")
+}else if(str_detect(infection_case_levels[i],"Insurance")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Insurance")
+}else if(str_detect(infection_case_levels[i],"Christ")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Christ")
+}else if(str_detect(infection_case_levels[i],"Shelter")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Shelter") 
+}else if(str_detect(infection_case_levels[i],"overseas")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"overseas")
+}else if(str_detect(infection_case_levels[i],"Richway")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Richway")
+}else if(str_detect(infection_case_levels[i],"Churches")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Churches")
+}else if(str_detect(infection_case_levels[i],"Kindergarten")){
+  case_type_indices2[i,1] = str_locate(infection_case_levels[i],"Kindergarten")
+}
+}
+
+case_type_indices2
+
+for(i in 1:nrow(sk_patients_complete3)){
+  if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[24,1],3) == "gym"){
+              case_types1[i] = "Gym"
+    }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[2,1],8) == "Biblical" | 
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[11,1],13) == "Church" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[15,1],21) == "Church" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[17,1],15) == "Church" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[28,1],30) == "Church" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[43,1],18) == "Church" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[44,1],26) == "Churches" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[47,1],15) == "Church" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[37,1],31) == "Church"){
+             case_types1[i] = "Church"
+    }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[3,1],22) == "Nursing" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[22,1],21) == "Silver" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[23,1],24) == "Nursing"){
+              case_types1[i] = "Nursing Home"
+   }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[5,1],25) == "Hospital" |
+            substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[14,1],30) == "Hospital"){
+              case_types1[i] = "Hospital"
+   }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[4,1],25) == "Karaoke" |
+            substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[26,1],14) == "Clubs"){
+              case_types1[i] = "Nightclubs/Bars"
+   }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[6,1],21) == "patient"){
+              case_types1[i] = "Patient Contact"
+   }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[34,1],8) == "overseas"){
+              case_types1[i] = "Overseas"
+  }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[7,1],25) == "Logistics Center"){
+              case_types1[i] = "Warehouse"
+  }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[21,1],38) == "Community Center" |
+         substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[45,1],24) == "Kindergarten"){
+              case_types1[i] = "Day Care Center"
+  }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[20,1],20) == "Call Center"){
+              case_types1[i] = "Call Center"
+  }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[27,1],18) == "Insurance" |
+           substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[38,1],32) == "Insurance"){
+              case_types1[i] = "Insurance Company"
+  }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[29,1],14) == "Shelter"){
+              case_types1[i] = "Homeless Shelter"
+  }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[41,1],17) == "APT"){
+              case_types1[i] = "Apartments"
+  }else if(substr(sk_patients_complete3[i,"infection_case"],case_type_indices2[30,1],8) == "Ministry"){
+              case_types1[i] = "Government"
+  }
+}
+
+sk_patients_complete4 <- sk_patients_complete3
+
+sk_patients_complete4 <- cbind(sk_patients_complete4,case_types1)
+
+sk_deaths3 <- sk_patients_complete4 %>% filter(state == "deceased")
+
+```
+
+
+#Exploratory Analysis
+
+## Histograms/Frequency Polygons
+
+### Deaths
+```{r}
+death_freq_gdp_per_cap <- ggplot(data = sk_deaths, mapping = aes(x = gdp_per_cap)) +geom_freqpoly()
+death_freq_gdp_per_cap
+
+death_hist_gdp_per_cap <- ggplot(data = sk_deaths, mapping = aes(x = gdp_per_cap)) +geom_histogram()
+death_hist_gdp_per_cap
+
+death_freq_age <- ggplot(data = sk_deaths, mapping = aes(x = age2)) +geom_freqpoly()
+death_freq_age
+
+death_hist_age <- ggplot(data = sk_deaths, mapping = aes(x = age2, fill = sex)) +geom_histogram()
+death_hist_age
+
+death_freq_age_sex <- ggplot(data = sk_deaths, mapping = aes(x = age2, color = sex)) +geom_freqpoly()
+death_freq_age_sex
+```
+## Bar Charts
+
+### Deaths
+```{r}
+ggplot(data = sk_deaths) + geom_bar(mapping = aes(x = state, fill = infection_case), position = "dodge")
+
+ggplot(data = sk_deaths2) + geom_bar(mapping = aes(x = state, fill = infection_case), position = "dodge")
+
+ggplot(data = sk_deaths3) + geom_bar(mapping = aes(x = state, fill = case_types1), position = "dodge")
+```
+
+
+### Deaths and Recoveries
+
+```{r}
+ggplot(data = sk_patients_complete2) + geom_bar(mapping = aes(x = state, fill = sex), position = "dodge")
+
+ggplot(data = sk_patients_complete2) + geom_bar(mapping = aes(x = state, fill = age), position = "dodge")
+
+ggplot(data = sk_patients_complete2) + geom_bar(mapping = aes(x = state, fill = province), position = "dodge")
+
+ggplot(data = sk_patients_complete4) + geom_bar(mapping = aes(x = state, fill = case_types1))
+```
+
+
+##Boxplots
+
+#Deaths and Recoveries
+```{r}
+ggplot(data = sk_patients_complete2, mapping = aes(x = state, y = age2)) + geom_boxplot()
+
+ggplot(data = sk_patients_complete2, mapping = aes(x = state, y = age2)) + geom_boxplot() + facet_wrap(.~sex)
+
+ggplot(data = sk_patients_complete2, mapping = aes(x = state, y = gdp_per_cap)) + geom_boxplot()
+
+ggplot(data = sk_patients_complete4, mapping = aes(x = case_types1, y = age2)) + geom_boxplot() +coord_flip()
+
+```
+## Deaths
+
+```{r}
+
+```
+
+
+##Scatterplots
+
+```{r}
+ggplot(data = sk_patients_complete2) + geom_point(mapping = aes(x = ))
+
+```
+
+## Models
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
