@@ -81,49 +81,60 @@ head(sk_patients4)
 ```{r}
 
 gdp_per_cap <- vector(mode = "numeric", length = nrow(sk_patients4))
+gdp_per_cap2 <- vector(mode = "numeric", length = nrow(sk_patients3))
 
-for(i in 1:nrow(sk_patients4)){
-  if(sk_patients4[i,"province"] == "Seoul"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[2,2]
-  }else if(sk_patients4[i,"province"] == "Busan"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[3,2]
-  }else if(sk_patients4[i,"province"] == "Daegu"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[4,2]
-  }else if(sk_patients4[i,"province"] == "Incheon"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[5,2]
-  }else if(sk_patients4[i,"province"] == "Gwangju"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[6,2]
-  }else if(sk_patients4[i,"province"] == "Daejeon"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[7,2]
-  }else if(sk_patients4[i,"province"] == "Ulsan"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[8,2]
-  }else if(sk_patients4[i,"province"] == "Sejong"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[9,2]
-  }else if(sk_patients4[i,"province"] == "Gyeonggi-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[10,2]
-  }else if(sk_patients4[i,"province"] == "Gangwon-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[11,2]
-  }else if(sk_patients4[i,"province"] == "Chungcheongbuk-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[12,2]
-  }else if(sk_patients4[i,"province"] == "Chungcheongnam-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[13,2]
-  }else if(sk_patients4[i,"province"] == "Jeollabuk-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[14,2]
-  }else if(sk_patients4[i,"province"] == "Jeollanam-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[15,2]
-  }else if(sk_patients4[i,"province"] == "Gyeongsangbuk-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[16,2]
-  }else if(sk_patients4[i,"province"] == "Gyeongsangnam-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[17,2]
-  }else if(sk_patients4[i,"province"] == "Jeju-do"){
-    gdp_per_cap[i] = sk_gdp_per_capita_province3[18,2]
+gdp_func <- function(x,y,z){
+for(i in 1:nrow(x)){
+  if(x[i,"province"] == "Seoul"){
+    y[i] = z[2,2]
+  }else if(x[i,"province"] == "Busan"){
+    y[i] = z[3,2]
+  }else if(x[i,"province"] == "Daegu"){
+    y[i] = z[4,2]
+  }else if(x[i,"province"] == "Incheon"){
+    y[i] = z[5,2]
+  }else if(x[i,"province"] == "Gwangju"){
+    y[i] = z[6,2]
+  }else if(x[i,"province"] == "Daejeon"){
+    y[i] = z[7,2]
+  }else if(x[i,"province"] == "Ulsan"){
+    y[i] = z[8,2]
+  }else if(x[i,"province"] == "Sejong"){
+    y[i] = z[9,2]
+  }else if(x[i,"province"] == "Gyeonggi-do"){
+    y[i] = z[10,2]
+  }else if(x[i,"province"] == "Gangwon-do"){
+    y[i] = z[11,2]
+  }else if(x[i,"province"] == "Chungcheongbuk-do"){
+    y[i] = z[12,2]
+  }else if(x[i,"province"] == "Chungcheongnam-do"){
+    y[i] = z[13,2]
+  }else if(x[i,"province"] == "Jeollabuk-do"){
+   y[i] = z[14,2]
+  }else if(x[i,"province"] == "Jeollanam-do"){
+    y[i] = z[15,2]
+  }else if(x[i,"province"] == "Gyeongsangbuk-do"){
+    y[i] = z[16,2]
+  }else if(x[i,"province"] == "Gyeongsangnam-do"){
+    y[i] = z[17,2]
+  }else if(x[i,"province"] == "Jeju-do"){
+    y[i] = z[18,2]
   }
 }
+  return(y)
+}
 
+gdp_per_cap <- gdp_func(sk_patients4,gdp_per_cap,sk_gdp_per_capita_province3)
 gdp_per_cap
+
 sk_patients_complete <- cbind(sk_patients4,gdp_per_cap)
 head(sk_patients_complete)
 
+gdp_per_cap2 <- gdp_func(sk_patients3,gdp_per_cap2,sk_gdp_per_capita_province3)
+gdp_per_cap2
+
+sk_patients_all <- cbind(sk_patients3,gdp_per_cap2)
+head(sk_patients_all)
 ```
 
 
@@ -133,37 +144,48 @@ head(sk_patients_complete)
 sk_patients_complete$age
 
 age2 <- vector(mode = "numeric",length = nrow(sk_patients_complete))
+age3 <- vector(mode = "numeric",length = nrow(sk_patients_all))
 
+age_func<- function(x,y){
 set.seed(123)
-for(i in 1:nrow(sk_patients_complete)){
-  if(sk_patients_complete[i,"age"] == "0s"){
-    age2[i] = sample(0:10)
-  }else if(sk_patients_complete[i,"age"] == "10s"){
-    age2[i] = sample(10:20)
-  }else if(sk_patients_complete[i,"age"] == "20s"){
-    age2[i] = sample(20:30)
-  }else if(sk_patients_complete[i,"age"] == "30s"){
-    age2[i] = sample(30:40)
-  }else if(sk_patients_complete[i,"age"] == "40s"){
-    age2[i] = sample(40:50)
-  }else if(sk_patients_complete[i,"age"] == "50s"){
-    age2[i] = sample(50:60)
-  }else if(sk_patients_complete[i,"age"] == "60s"){
-    age2[i] = sample(60:70)
-  }else if(sk_patients_complete[i,"age"] == "70s"){
-    age2[i] = sample(70:80)
-  }else if(sk_patients_complete[i,"age"] == "80s"){
-    age2[i] = sample(80:90)
-  }else if(sk_patients_complete[i,"age"] == "90s"){
-    age2[i] = sample(90:100)
-  }else if(sk_patients_complete[i,"age"] == "100s"){
-    age2[i] = sample(100:110)
+for(i in 1:nrow(x)){
+  if(x[i,"age"] == "0s"){
+    y[i] = sample(0:10)
+  }else if(x[i,"age"] == "10s"){
+    y[i] = sample(10:20)
+  }else if(x[i,"age"] == "20s"){
+    y[i] = sample(20:30)
+  }else if(x[i,"age"] == "30s"){
+    y[i] = sample(30:40)
+  }else if(x[i,"age"] == "40s"){
+    y[i] = sample(40:50)
+  }else if(x[i,"age"] == "50s"){
+    y[i] = sample(50:60)
+  }else if(x[i,"age"] == "60s"){
+    y[i] = sample(60:70)
+  }else if(x[i,"age"] == "70s"){
+    y[i] = sample(70:80)
+  }else if(x[i,"age"] == "80s"){
+    y[i] = sample(80:90)
+  }else if(x[i,"age"] == "90s"){
+    y[i] = sample(90:100)
+  }else if(x[i,"age"] == "100s"){
+    y[i] = sample(100:110)
   }
 }
+  return(y)
+}
 
+age2 <- age_func(sk_patients_complete,age2)
+age2
 
 sk_patients_complete2 <- cbind(sk_patients_complete,age2)
 head(sk_patients_complete2)
+
+age3 <- age_func(sk_patients_all,age3)
+
+sk_patients_all2<-cbind(sk_patients_all,age3)
+head(sk_patients_all2)
 
 ```
 
@@ -172,6 +194,7 @@ sk_deaths <- sk_patients_complete2 %>% filter(state == "deceased")
 dim(sk_deaths)
 
 sk_patients_complete3 <- sk_patients_complete2 %>% filter(!(infection_case == "etc"))
+sk_patients_all3 <- sk_patients_all2 %>% filter(!(infection_case == "etc"))
 
 sk_deaths2 <- sk_patients_complete3 %>% filter(state == "deceased")
 dim(sk_deaths2)
@@ -183,11 +206,20 @@ dim(sk_deaths2)
 infection_case_counts <- table(sk_patients_complete3$infection_case)
 infection_case_counts
 
+infection_case_counts_all <- table(sk_patients_all3$infection_case)
+infection_case_counts_all
+
+infection_case_counts_all2 <- subset(data.frame(infection_case_counts_all),Freq > 0)
+infection_case_counts_all2
+
 infection_case_counts2 <- subset(data.frame(infection_case_counts), Freq > 0)
+infection_case_counts2
 
 case_types <- vector(mode = "character", length = nrow(sk_patients_complete3))
 case_types1 <- factor(case_types,levels = c("Gym","Church","Hospital","Nursing Home","Day Care Center","Patient Contact","Insurance Company","Overseas","Nightclubs/Bars","Richway Product Retailer","Homeless Shelter","Warehouse", "Call Center","Apartments","Government"))
 length(case_types1)
+
+
 
 infection_case_levels <- levels(sk_patients_complete3$infection_case)
 infection_case_levels
