@@ -1,0 +1,759 @@
+---
+title: "DATA Project 1"
+author: "Hudson Finch-Batista"
+date: "8/8/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data Importing and Cleaning/Tidying
+
+## Importing The Data (CPI Data and VC Investment Data from 1913 to 2014)
+```{r}
+library(anytime)
+library(tidyverse)
+library(plotly)
+library(lubridate)
+library(ggplot2)
+library(stringr)
+setwd("~/Desktop/R Datasets/Data Science Datasets")
+vc_data <- read.csv("investments_VC.csv",na.strings = "",stringsAsFactors = FALSE)
+geographical_df <- read.csv("geographical.csv")
+
+library("jsonlite")
+
+json_file <- 'https://datahub.io/core/cpi-us/datapackage.json'
+json_data <- fromJSON(paste(readLines(json_file), collapse=""))
+
+# get list of all resources:
+print(json_data$resources$name)
+
+# print all tabular data(if exists any)
+for(i in 1:length(json_data$resources$datahub$type)){
+  if(json_data$resources$datahub$type[i]=='derived/csv'){
+    path_to_file = json_data$resources$path[i]
+    data <- read.csv(url(path_to_file))
+  }
+}
+```
+
+
+## Structure, head, and tail of Data
+```{r}
+str(vc_data)
+head(vc_data)
+tail(vc_data)
+```
+
+
+## Mutate character variables into factors and dates 
+```{r}
+vc_data2 <- vc_data %>% mutate(category_list = as.factor(category_list), market = as.factor(market), status = as.factor(status), country_code = as.factor(country_code), state_code = as.factor(state_code), city = as.factor(city), founded_at = mdy(founded_at), first_funding_at = mdy(first_funding_at), last_funding_at = mdy(last_funding_at))
+
+head(vc_data2)
+```
+
+## Identify date issues
+```{r}
+
+# Identify dates where first funding occurs before company founded
+
+vc_data2 %>% count(founded_at == first_funding_at)
+vc_data2 %>% count(founded_at > first_funding_at)
+
+fund_date_issue <- vector(mode = "logical", length = nrow(vc_data2))
+
+for(i in 1:nrow(vc_data2)){
+  if(difftime(vc_data2[i,"founded_at"],vc_data2[i,"first_funding_at"], units = "days") > 0 & !is.na(vc_data2[i,"founded_at"]) & !is.na(vc_data2[i,"first_funding_at"])){
+    vc_data2[i,"first_funding_at"] = vc_data2[i,"founded_at"]
+    fund_date_issue[i] = TRUE
+  }
+}
+
+fund_date_issue2 <- data.frame(fund_date_issue)
+
+vc_data3 <- cbind(vc_data2,fund_date_issue2)
+
+head(vc_data3)
+
+
+# Identify dates in the founded_at column and set their year values equal to the founded_year value
+
+head(vc_data3 %>% arrange(desc(founded_at)))
+
+for(i in 1:nrow(vc_data3)){
+  if(!is.na(vc_data3[i,"founded_at"]) & vc_data3[i,"founded_at"] > 2014-12-13){
+    year(vc_data3[i,"founded_at"]) = vc_data3[i,"founded_year"] 
+    year(vc_data3[i,"first_funding_at"]) = vc_data3[i,"founded_year"]
+    year(vc_data3[i,"last_funding_at"]) = vc_data3[i,"founded_year"]
+  }
+}
+
+head(vc_data3)
+tail(vc_data3)
+```
+
+
+## Remove commas from total funding column and extract month and quarter from founded_month and founded_quarter columns
+```{r}
+vc_data3$funding_total_usd<- as.numeric(gsub(",","",vc_data3$funding_total_usd))
+
+vc_data4 <- vc_data3 %>% mutate(founded_month = as.integer(substr(founded_month,6,7)), founded_quarter = as.factor(substr(founded_quarter,6,7)))
+head(vc_data4)
+```
+
+
+## Change founded_month integer variable to a factor with levels equal to the names of months
+```{r}
+month <- vector(mode = "character", length = nrow(vc_data4))
+
+for(i in 1:nrow(vc_data4)){
+  if(is.na(vc_data4[i,"founded_month"])){
+    month[i] = NA
+  }else if(vc_data4[i,"founded_month"] == 1){
+    month[i] = "January"
+  } else if(vc_data4[i,"founded_month"] == 2){
+    month[i] = "February"
+  } else if(vc_data4[i,"founded_month"] == 3){
+    month[i] = "March"
+  }else if(vc_data4[i,"founded_month"] == 4){
+    month[i] = "April"
+  }else if(vc_data4[i,"founded_month"] == 5){
+    month[i] = "May"
+  }else if(vc_data4[i,"founded_month"] == 6){
+    month[i] = "June"
+  }else if(vc_data4[i,"founded_month"] == 7){
+    month[i] = "July"
+  }else if(vc_data4[i,"founded_month"] == 8){
+    month[i] = "August"
+  }else if(vc_data4[i,"founded_month"] == 9){
+    month[i] = "September"
+  }else if(vc_data4[i,"founded_month"] == 10){
+    month[i] = "October"
+  }else if(vc_data4[i,"founded_month"] == 11){
+    month[i] = "November"
+  }else if(vc_data4[i,"founded_month"] == 12){
+    month[i] = "December"
+  }
+}
+
+for(i in 1:nrow(vc_data4)){
+  vc_data4[i,12] = month[i]
+}
+
+head(vc_data4)
+
+vc_data5<- vc_data4 %>% mutate(founded_month = as.factor(founded_month))
+head(vc_data5)
+
+```
+
+
+## Group related market variable categories together to reduce the number of categories
+```{r}
+markets2 <- vector(mode = "character", length = nrow(vc_data5))
+
+markets3 <- factor(markets2,levels = c("Internet", "Big Data Analytics/Security", "Apps/Social Media", "Energy","Health/Medicine/Biotech", "Finance","Other"))
+
+vc_data_clean <- cbind(vc_data5,markets3)
+head(vc_data_clean)
+
+for(i in 1:nrow(vc_data5)){
+  if(is.na(vc_data5[i,"market"])){
+    vc_data_clean[i,"markets3"] = NA
+  } else if(str_detect(vc_data5[i,"market"],"Web") | str_detect(vc_data5[i,"market"],"Internet") | str_detect(vc_data5[i,"market"],"Cloud") | str_detect(vc_data5[i,"market"],"IT") | str_detect(vc_data5[i,"market"],"E-Commerce") | str_detect(vc_data5[i,"market"],"Online") | str_detect(vc_data5[i,"market"],"Information") | str_detect(vc_data5[i,"market"],"Enterprise")){
+    vc_data_clean[i,"markets3"] = "Internet"
+  } else if(str_detect(vc_data5[i,"market"],"Augmented Reality") | str_detect(vc_data5[i,"market"],"Data") | str_detect(vc_data5[i,"market"],"Artificial Intelligence") | str_detect(vc_data5[i,"market"],"Cyber") | str_detect(vc_data5[i,"market"],"Security") | str_detect(vc_data5[i,"market"],"Machine Learning") | str_detect(vc_data5[i,"market"],"Analytics") | str_detect(vc_data5[i,"market"],"Algorithms")){
+    vc_data_clean[i,"markets3"] = "Big Data Analytics/Security"
+  } else if(str_detect(vc_data5[i,"market"],"Mobile") | str_detect(vc_data5[i,"market"],"Social")){
+    vc_data_clean[i,"markets3"] = "Apps/Social Media"
+  } else if(str_detect(vc_data5[i,"market"],"Energy") | str_detect(vc_data5[i,"market"],"Biofeuls") | str_detect(vc_data5[i,"market"],"Biomass") | str_detect(vc_data5[i,"market"],"Clean") | str_detect(vc_data5[i,"market"],"Green") | str_detect(vc_data5[i,"market"],"Natural") | str_detect(vc_data5[i,"market"],"Oil") | str_detect(vc_data5[i,"market"],"Fuels") | str_detect(vc_data5[i,"market"],"Renewable")){
+    vc_data_clean[i,"markets3"] = "Energy"
+  } else if(str_detect(vc_data5[i,"market"],"Health") | str_detect(vc_data5[i,"market"],"Biometrics") | str_detect(vc_data5[i,"market"],"Biotechnology") | str_detect(vc_data5[i,"market"],"Medical")){
+    vc_data_clean[i,"markets3"] = "Health/Medicine/Biotech"
+  } else if(str_detect(vc_data5[i,"market"],"Finance") | str_detect(vc_data5[i,"market"],"Financial") | str_detect(vc_data5[i,"market"],"Banking") | str_detect(vc_data5[i,"market"],"Bitcoin") | str_detect(vc_data5[i,"market"],"P2P")){
+    vc_data_clean[i,"markets3"] = "Finance"
+  } else {
+    vc_data_clean[i,"markets3"] = "Other"
+  }
+}
+
+head(vc_data_clean)
+
+```
+
+# Cleaned VC data with geographical information
+```{r}
+geographical_df <- geographical_df %>% rename(global_region = region.y, region = region.x)
+geographical_df <- geographical_df %>% rename(region = region.x)
+```
+
+
+
+## Create categorical variable for numerical venture variable 
+```{r}
+vc_data_clean2 <- vc_data_clean %>% filter(fund_date_issue != TRUE, !is.na(venture), !is.na(first_funding_at), venture > 0)
+
+vc_fund_cats1 <- vc_data_clean2$venture
+
+range(vc_data_clean2$venture)
+
+vc_data_clean2$venture_cats <- cut(vc_fund_cats1, 20, labels = c("0 to 117 million", "117 to 235 million","235 to 352 million","352 to 470 million","470 to 588 million","588 to 705 million","705 to 823 million","823 to 940 million","940 million to 1 billion","1 to 1.175 billion","1.17 to 1.3 billion","1.3 to 1.4 billion","1.4 to 1.53 billion","1.53 to 1.64 billion","1.64 to 1.76 billion", "1.76 to 1.88 billion", "1.88 to 1.99 billion","1.99 to 2.11 billion","2.11 to 2.23 billion","2.23 to 2.35 billion"))
+
+head(vc_data_clean2)
+```
+
+
+
+## Take a sample of 500 observations of venture funding and adjust the nominal venture funding for inflation such that funding from any time period is expressed in 2014 prices
+```{r}
+real_venture<-vector(mode = "numeric", length = nrow(vc_data_clean2))
+vc_data_clean2 <- cbind(vc_data_clean2,real_venture)
+head(vc_data_clean2)
+
+set.seed(123)
+vc_data_clean3 <- sample_n(vc_data_clean2,500)
+
+for(i in 1:nrow(data)){
+  for(j in 1:nrow(vc_data_clean3)){
+if(!is.na(vc_data_clean3[j,"first_funding_at"])  & !is.na(vc_data_clean3[j,"venture"]) & difftime(vc_data_clean3[j,"first_funding_at"], data[i,"Date"], units = "days") >= 0 & difftime(vc_data_clean3[j,"first_funding_at"], data[i,"Date"], units = "days") < 31){
+    vc_data_clean3[j,"real_venture"] = vc_data_clean3[j,"venture"]*(data[1213,"Index"]/data[i,"Index"])
+}
+}
+}
+
+head(vc_data_clean3)
+
+vc_fund_cats1 <- vc_data_clean3$real_venture
+
+range(vc_data_clean3$real_venture)
+
+vc_data_clean3$venture_cats <- cut(vc_fund_cats1, 10, labels = c("0 to 32 million", "32 to 64 million","64 to 96 million","96 to 128 million","128 to 160 million","160 to 192 million","192 to 224 million","224 to 256 million","256 to 288 million","288 to 320 million"))
+
+head(vc_data_clean3)
+```
+
+# Data Analysis
+
+## Proportion of Companies by Funding Rounds, Status, and Funding Amount
+```{r}
+# Is the proportion of companies by status equal?
+
+status_prop <- vc_data_clean %>% group_by(status) %>% summarise(num_comps = length(status)) %>% mutate(prop_comps = num_comps/sum(num_comps))
+status_prop
+
+
+# Is the proportion of companies by funding amount equal?
+
+fund_prop <- vc_data_clean2 %>% group_by(venture_cats) %>% summarise(num_comps = length(status)) %>% mutate(prop_comps = num_comps/sum(num_comps))
+fund_prop
+
+
+# Is the proportion of companies by funding round equal? 
+
+fund_rnd_prop <- vc_data_clean %>% group_by(funding_rounds) %>% summarise(num_comps = length(funding_rounds)) %>% mutate(prop_comps = num_comps/sum(num_comps))
+fund_rnd_prop
+
+```
+
+
+## Mean Venture Funding and Mean Funding Rounds by Month Founded & Mean Funding Rounds by Funding Amount
+```{r}
+# Is mean venture capital funding the same across every month?
+
+venture_fund_month <-vc_data_clean %>%  group_by(founded_month) %>% filter(!is.na(venture)) %>%  summarise(mean_funding = mean(venture), sum_funding = sum(venture)) %>% mutate(prop_funding = sum_funding/sum(sum_funding)) %>% arrange(desc(mean_funding))
+venture_fund_month
+
+ggplot(venture_fund_month) + geom_col(mapping = aes(x = founded_month, y = mean_funding)) + coord_flip()
+
+# Is the mean number of funding rounds the same across every month?
+
+fund_rnd_month <- vc_data_clean %>% group_by(founded_month) %>% filter(!is.na(funding_rounds)) %>% summarise(mean_rnds = mean(funding_rounds), sum_rnds = sum(funding_rounds)) %>% mutate(prop_rnds = sum_rnds/sum(sum_rnds))
+fund_rnd_month
+
+ggplot(fund_rnd_month) + geom_col(mapping = aes(x = founded_month, y = mean_rnds))
+
+# Is the mean number of funding rounds the same across all funding amounts?
+
+fund_rnd_funding <- vc_data_clean2 %>% group_by(venture_cats) %>% filter(!is.na(funding_rounds)) %>% summarise(mean_rnds = mean(funding_rounds), sum_rnds = sum(funding_rounds)) %>% mutate(prop_rnds = sum_rnds/sum(sum_rnds))
+fund_rnd_funding
+
+ggplot(fund_rnd_funding) + geom_col(mapping = aes(x = venture_cats, y = mean_rnds))
+```
+
+
+
+## Mean Venture Funding and Funding Rounds by Status from 1913 to 1990 and from 1990 to 2014
+```{r}
+# Does mean real venture funding by status vary from the 1980's onward?
+
+venture_status1 <- vc_data_clean3 %>% group_by(status) %>% filter(!is.na(real_venture), founded_year < 1990-01-01) %>% summarise(mean_venture = mean(real_venture), sum_venture = sum(real_venture)) %>% mutate(prop_venture = sum_venture/sum(sum_venture))
+venture_status1
+
+venture_status2 <- vc_data_clean3 %>% group_by(status) %>% filter(!is.na(real_venture), founded_year > 1990-01-01) %>% summarise(mean_venture = mean(real_venture), sum_venture = sum(as.numeric(real_venture))) %>% mutate(prop_venture = sum_venture/sum(sum_venture))
+venture_status2
+
+ggplot(venture_status1) + geom_col(mapping = aes(x = status, y = mean_venture))
+
+ggplot(venture_status2) + geom_col(mapping = aes(x = status, y = mean_venture))
+
+# Does the mean number of funding rounds vary from the 1980's onward?
+
+fund_status_rnd_time1 <- vc_data_clean %>% group_by(status) %>% filter(!is.na(funding_rounds), founded_at < 1990-01-01) %>%  summarise(mean_fund_rnd = mean(funding_rounds), sum_funding_rnds = sum(funding_rounds)) %>% mutate(prop_funding = sum_funding_rnds/sum(sum_funding_rnds))
+fund_status_rnd_time1
+
+fund_status_rnd_time2 <- vc_data_clean %>% group_by(status) %>% filter(!is.na(funding_rounds), founded_at > 1990-01-01) %>%  summarise(mean_fund_rnd = mean(funding_rounds), sum_funding_rnds = sum(funding_rounds)) %>% mutate(prop_funding = sum_funding_rnds/sum(sum_funding_rnds))
+fund_status_rnd_time2
+
+ggplot(fund_status_rnd_time1) + geom_col(mapping = aes(x = status, y = mean_fund_rnd))
+
+ggplot(fund_status_rnd_time2) + geom_col(mapping = aes(x = status, y = mean_fund_rnd))
+
+```
+
+
+
+## Mean Venture Funding and Funding Rounds by Market from 1913 to 1990 and from 1990 to 2014
+```{r}
+# Does mean real venture funding (venture funding adjusted for inflation) by market vary from the 1980's onward?
+
+real_venture_market_time1 <-vc_data_clean3 %>%  group_by(markets3) %>% filter(!is.na(real_venture), founded_year < 1990) %>%  summarise(mean_funding = mean(real_venture), sum_funding = sum(real_venture)) %>% mutate(prop_funding = sum_funding/sum(sum_funding)) %>% arrange(desc(mean_funding))
+real_venture_market_time1
+
+real_venture_market_time2 <-vc_data_clean3 %>%  group_by(markets3) %>% filter(!is.na(real_venture), founded_year > 1990) %>%  summarise(mean_funding = mean(real_venture), sum_funding = sum(real_venture)) %>% mutate(prop_funding = sum_funding/sum(sum_funding)) %>% arrange(desc(mean_funding))
+real_venture_market_time2
+
+ggplot(real_venture_market_time1) + geom_col(mapping = aes(x = markets3, y = mean_funding))
+
+ggplot(real_venture_market_time2) + geom_col(mapping = aes(x = markets3, y = mean_funding))
+
+# Do the markets that recieve the most funding rounds on average vary over time?
+
+fund_rnd_market_time1 <-vc_data_clean %>%  group_by(markets3) %>% filter(!is.na(funding_rounds), founded_at < 1990-01-01) %>%  summarise(mean_fund_rnd = mean(funding_rounds), sum_fund_rnd = sum(funding_rounds)) %>% mutate(prop_funding = sum_fund_rnd/sum(sum_fund_rnd)) %>% arrange(desc(mean_fund_rnd))
+fund_rnd_market_time1
+
+ggplot(fund_rnd_market_time1) + geom_col(mapping = aes(x = markets3, y = mean_fund_rnd)) + coord_flip()
+
+fund_rnd_market_time2 <-vc_data_clean %>%  group_by(markets3) %>% filter(!is.na(funding_rounds), founded_at > 1990-01-01) %>%  summarise(mean_fund_rnd = mean(funding_rounds), sum_fund_rnd = sum(funding_rounds)) %>% mutate(prop_funding = sum_fund_rnd/sum(sum_fund_rnd)) %>% arrange(desc(mean_fund_rnd))
+fund_rnd_market_time2
+
+ggplot(fund_rnd_market_time2) + geom_col(mapping = aes(x = markets3, y = mean_fund_rnd)) + coord_flip()
+```
+
+
+
+## Post-IPO Equity Value Among Operating Companies and Number of IPO's Among Companies
+```{r}
+head(vc_data_clean %>% arrange(desc(post_ipo_equity)))
+
+tapply(vc_data_clean$post_ipo_equity,vc_data_clean$status,length)
+
+## Are companies that receieve more funding rounds on average more likely to issue an IPO? 
+
+fund_rnd_num_ipo <- vc_data_clean %>% group_by(funding_rounds) %>% filter(!is.na(post_ipo_equity), post_ipo_equity > 0) %>% summarise(num_ipos = length(post_ipo_equity))
+fund_rnd_num_ipo
+
+## Are companies that recieve more venture funding on average more likely to issue an IPO?
+
+venture_num_ipo <- vc_data_clean2 %>% group_by(venture_cats) %>% filter(!is.na(post_ipo_equity), post_ipo_equity > 0) %>% summarise(num_ipos = length(post_ipo_equity))
+venture_num_ipo
+
+## Are operating companies that recieve more funding rounds on average more likely to have a higher post-IPO value? 
+
+op_ipo_market_time2 <- vc_data_clean %>% group_by(funding_rounds) %>% filter(status == "operating", !is.na(post_ipo_equity), post_ipo_equity >0) %>% summarise(mean_ipo_equity = mean(post_ipo_equity), max_ipo_equity = max(post_ipo_equity), min_ipo_equity = min(post_ipo_equity))
+op_ipo_market_time2
+
+## Are operating companies that recieve more venture funding on average more likely to have a higher mean post-IPO value?
+
+op_ipo_market_time1 <- vc_data_clean2 %>% group_by(venture_cats) %>% filter(status == "operating", !is.na(post_ipo_equity), post_ipo_equity > 0, !is.na(venture)) %>% summarise(mean_ipo_equity = mean(post_ipo_equity), max_ipo_equity = max(post_ipo_equity), min_ipo_equity = min(post_ipo_equity))
+op_ipo_market_time1
+
+```
+
+
+
+## Subsetting the data to do a microanalysis of the Biotechnology market.
+
+```{r}
+# unique(vc_data4$market)
+Biotech <- vc_data_clean %>%
+  select(c(1, 3, 4, 5, 6, 7, 9, 12, 14)) %>%
+  filter(market == " Biotechnology ")
+head(Biotech)
+view(Biotech)
+```
+
+
+## The plot below is meant to visualize the status of the biotechnology companies.
+
+```{r}
+plt <- Biotech %>%
+  ggplot()+
+  geom_col(aes(x = status, y = nrow(Biotech), fill = status))+
+  ylab("Number of Companies")+
+  xlab("Operational status")
+plt
+```
+
+
+## The below code further subsets the data to specifically look at the number of biotechnology companies that were founded per year. It also showed that the years are not continuous.
+
+```{r}
+library(plyr)
+Comp_year <- count(Biotech, "founded_year") %>%
+  rename(c("freq" = "total_comp_founded"))
+# view(Comp_year)
+Comp_year <- Comp_year[-c(53), ]
+summary(Comp_year)
+
+plt2 <- Comp_year %>%
+  ggplot()+
+  geom_point(aes(x = founded_year, y = total_comp_founded))+
+  xlab("Year")+
+  ylab("Companies Founded")
+plt2
+```
+
+
+## Similarly, this code looks at the number of companies founded per country. It is interesting to note that the United States far exceeds that of other countries.
+
+```{r}
+Comp_country <- count(Biotech, "country_code") %>%
+  rename(c("freq" = "total_founded"))
+# view(Comp_country)
+summary(Comp_country)
+
+plt3 <- Comp_country %>%
+  ggplot()+
+  geom_col(aes(x = country_code, y = total_founded, fill = country_code))+
+  coord_flip()+
+  xlab("Country")+
+  ylab("Companies Founded")
+plt3
+```
+
+
+## This code does the same as that above, except that it shows number of biotechnology companies founded per state. This was interesting because it showed that the 'state_code' column of the dataset also contains Canadian provinces. Therefore, it is more accurate to say that the below shows a look at companies found in North America.
+
+```{r}
+Comp_state <- count(Biotech, "state_code") %>%
+  rename(c("freq" = "total_founded"))
+# view(Comp_state)
+summary(Comp_state)
+
+plt4 <- Comp_state %>%
+  ggplot()+
+  geom_col(aes(x = state_code, y = total_founded, fill = state_code))+
+  coord_flip()+
+  xlab("State")+
+  ylab("Companies Founded")+
+  ggtitle("North America Biotech Start-Ups")
+plt4
+```
+
+
+## How is funding related to operational status? 
+
+## The code below shows that on average there is more funding assocaited with biotechnology companies that have been acquired.
+
+```{r}
+Bt2 <- Biotech %>%
+  select(c(3, 4)) %>%
+  group_by(status) %>%
+  summarise_each(funs(mean(., na.rm = TRUE))) %>%
+  rename(c("funding_total_usd" = "mfunding_per_status"))
+head(Bt2)
+# view(Bt2)
+```
+
+
+## What is the average amount of funding on a global level, North America level, on a city level, and per year? 
+
+## The following chucks of code create subsetted datasets containing the desired information.
+
+## Bt3 shows the average funding per country.
+## Bt4 shows the average funding per state/province in North America.
+## Bt5 shows the average funding per city, globally.
+## Bt6 shows the average funding per year.
+
+
+```{r}
+Bt3 <- Biotech %>%
+  select(c(3, 5)) %>%
+  group_by(country_code) %>%
+  summarise_each(funs(mean(., na.rm = TRUE))) %>%
+  rename(c("funding_total_usd" = "mfunding_per_country"))
+head(Bt3)
+# view(Bt3)
+```
+
+
+
+```{r}
+Bt4 <- Biotech %>%
+  select(c(3, 6)) %>%
+  group_by(state_code) %>%
+  summarise_each(funs(mean(., na.rm = TRUE))) %>%
+  rename(c("funding_total_usd" = "mfunding_per_state"))
+head(Bt4)
+# view(Bt4)
+```
+
+
+
+```{r}
+Bt5 <- Biotech %>%
+  select(c(3, 7)) %>%
+  group_by(city) %>%
+  summarise_each(funs(mean(., na.rm = TRUE))) %>%
+  rename(c("funding_total_usd" = "mfunding_per_city"))
+head(Bt5)
+# view(Bt5)
+```
+
+
+
+```{r}
+Bt6 <- Biotech %>%
+  select(c(3, 9)) %>%
+  group_by(founded_year) %>%
+  summarise_each(funs(mean(., na.rm = TRUE))) %>% 
+  rename(c("funding_total_usd" = "mean_funding"))
+head(Bt6)
+# view(Bt6)
+```
+
+
+## Where are there NA values for 'funding_total_usd' and what countries are they associated with?
+
+## The below code identifies five countries that have no funding total information associated with them. These countries are Mexico, Hungry, Argentina, Thailand, Lithuania. However, it is interesting to note that these countries did have one biotechnology company founded. 
+
+
+```{r}
+Biot <- Biotech %>%
+  select(c(3, 5)) %>%
+  filter(country_code == "ARG" | country_code == "HUN" | country_code == "LTU" | country_code == "MEX" | country_code == "THA")
+head(Biot)
+```
+
+
+## The below is a simple scatter plot that shows how the average funding for biotechnology companies has changed over time. 
+
+
+```{r}
+plottt <- Bt6 %>%
+  ggplot()+
+  geom_point(aes(x = founded_year, y = mean_funding))
+plottt
+```
+
+
+## How does the mean and the total funding compare for each of the levels of interest? How does the average compare with the theoretical allocation of funds (i.e. how does the mean compare to the total funding/the number of companies founded)? 
+
+## Each "Analysis" is the dataset that contains the answer to this question at the various levels of interest.
+
+
+```{r}
+Bt7 <- Biotech %>%
+  select(c(3, 9)) %>%
+  group_by(founded_year) %>%
+  summarise_each(funs(sum(., na.rm = TRUE))) %>%
+  rename(c("funding_total_usd" = "sum_funding"))
+head(Bt7)
+# view(Bt7)
+```
+
+```{r}
+Temp <- merge(Bt6, Bt7, by = 'founded_year')
+tail(Temp)
+Analysis1 <- merge(Temp, Comp_year, by = 'founded_year') %>%
+  mutate(funds_per_comp = sum_funding / total_comp_founded)
+tail(Analysis1)
+# view(Analysis1)
+```
+
+
+
+```{r}
+Bt8 <- Biotech %>%
+  select(c(3, 6)) %>%
+  group_by(state_code) %>%
+  summarise_each(funs(sum(., na.rm = TRUE))) %>%
+  rename(c("funding_total_usd" = "sfunding_per_state"))
+head(Bt8)
+# view(Bt8)
+
+Temp2 <- merge(Bt4, Bt8, by = 'state_code')
+tail(Temp2)
+Analysis2 <- merge(Temp2, Comp_state, by = 'state_code') %>%
+  mutate(funds_per_comp = sfunding_per_state / total_founded) %>%
+  rename(c("state_code" = "state"))
+tail(Analysis2)
+view(Analysis2)
+```
+
+
+
+```{r}
+Bt9 <- Biotech %>%
+  select(c(3, 5)) %>%
+  group_by(country_code) %>%
+  summarise_each(funs(sum(., na.rm = TRUE))) %>%
+  rename(c("funding_total_usd" = "sfunding_per_country"))
+head(Bt9)
+# view(Bt9)
+
+Temp3 <- merge(Bt3, Bt9, by = 'country_code')
+tail(Temp3)
+Analysis3 <- merge(Temp3, Comp_country, by = 'country_code') %>%
+  mutate(funds_per_comp = sfunding_per_country / total_founded) %>%
+  rename(c("country_code" = "country"))
+tail(Analysis3)
+view(Analysis3)
+```
+
+
+```{r}
+Comp_city <- count(Biotech, "city") %>%
+  rename(c("freq" = "total_founded"))
+# view(Comp_state)
+summary(Comp_state)
+
+Bt10 <- Biotech %>%
+  select(c(3, 7)) %>%
+  group_by(city) %>%
+  summarise_each(funs(sum(., na.rm = TRUE))) %>%
+  rename(c("funding_total_usd" = "sfunding_per_city"))
+head(Bt10)
+# view(Bt10)
+
+Temp4 <- merge(Bt5, Bt10, by = 'city')
+tail(Temp4)
+Analysis4 <- merge(Temp4, Comp_city, by = 'city') %>%
+  mutate(funds_per_comp = sfunding_per_city / total_founded)
+tail(Analysis4)
+view(Analysis4)
+```
+
+
+
+```{r}
+mean_funding <- mean(geographical_df$funding_total_usd)
+
+# which global regions receive the most funding on average? 
+
+fund_global_market <- geographical_df %>% group_by(global_region) %>% filter(!is.na(funding_total_usd)) %>% summarise(mean_funding = mean(funding_total_usd)) %>% arrange(desc(mean_funding))
+nrow(fund_global_market)
+head(fund_global_market)
+
+ggplot(fund_global_market) + geom_col(mapping = aes(x = global_region, y =mean_funding)) + coord_flip()
+
+
+#which global regions receive the most funding?
+
+most_fund_global <- geographical_df %>% group_by(global_region) %>% filter(!is.na(funding_total_usd)) %>% summarise(funding_total_usd) %>% arrange(desc(funding_total_usd))
+
+nrow(most_fund_global)
+head(most_fund_global)
+
+ggplot(most_fund_global) + geom_col(mapping = aes(x =global_region, y = funding_total_usd)) + coord_flip()
+
+most_fund_globallm <- lm(funding_total_usd ~ global_region, data = geographical_df)
+summary(most_fund_globallm)
+anova(most_fund_globallm)
+
+
+#does gdp have a correlation with VC funding?
+
+gdp_funding <- geographical_df %>% group_by(gdp_per_capita,) %>% filter(!is.na(funding_total_usd)) %>% summarise(mean_funding = mean(funding_total_usd)) %>% arrange(desc(mean_funding))
+
+nrow(gdp_funding)
+head(gdp_funding)
+
+gdp_to_fundinglm <-lm(funding_total_usd ~ gdp_per_capita, data = geographical_df)
+
+summary(gdp_to_fundinglm)
+anova(gdp_to_fundinglm)
+
+#does population have a correlation with VC funding?
+
+pop_to_funding <- geographical_df %>% group_by(population) %>% filter(!is.na(funding_total_usd)) %>% summarise(funding_total_usd) %>% arrange(desc(funding_total_usd))
+nrow(pop_to_funding)
+head(pop_to_funding)
+
+
+pop_to_fundinglm <- lm(funding_total_usd ~ population, data = geographical_df)
+summary(pop_to_fundinglm)
+anova(pop_to_fundinglm)
+
+# does population density have a correlation with VC funding? 
+
+geographical_df$pop_dens_per_mi <- as.numeric(geographical_df$pop_dens_per_mi)
+class(geographical_df$pop_dens_per_mi)
+
+dens_to_fundinglm <- lm(funding_total_usd ~ pop_dens_per_mi, data = geographical_df)
+summary(dens_to_fundinglm)
+anova(dens_to_fundinglm)
+
+
+#does literacy rate have a correlation with VC funding?
+
+geographical_df$literacy <- as.numeric(geographical_df$literacy)
+
+lit_to_fundinglm <- lm(funding_total_usd ~ literacy, data = geographical_df)
+summary(lit_to_fundinglm)
+anova(lit_to_fundinglm)
+
+#does market category have a correlation with VC funding?
+
+market_to_fundinglm <- lm(funding_total_usd ~ markets3, data = geographical_df)
+summary(market_to_fundinglm)
+anova(market_to_fundinglm)
+
+
+
+#can we create a linear model that can try to explain global VC funding by demographics?
+
+geographical_df$phones_per_1000 <- as.numeric(geographical_df$phones_per_1000)
+class(geographical_df$phones_per_1000) 
+
+global_analysislm0 <- lm(funding_total_usd ~ gdp_per_capita, data=geographical_df)
+summary(global_analysislm0)
+anova(global_analysislm1)
+
+global_analysislm1 <- lm(funding_total_usd ~ gdp_per_capita + population, data=geographical_df)
+summary(global_analysislm1)
+anova(global_analysislm1)
+
+global_analysislm2 <- lm(funding_total_usd ~ gdp_per_capita + population + pop_dens_per_mi, data=geographical_df)
+summary(global_analysislm2)
+anova(global_analysislm2)
+
+global_analysislm3 <- lm(funding_total_usd ~ gdp_per_capita + population + pop_dens_per_mi + literacy, data=geographical_df)
+summary(global_analysislm3)
+anova(global_analysislm3)
+
+global_analysislm4 <- lm(funding_total_usd ~ gdp_per_capita + population + pop_dens_per_mi + literacy + markets3, data=geographical_df)
+summary(global_analysislm4)
+anova(global_analysislm4)
+
+global_analysislm5 <- lm(funding_total_usd ~ gdp_per_capita + population + pop_dens_per_mi + literacy + markets3 + area_sq_mi, data=geographical_df)
+summary(global_analysislm5)
+anova(global_analysislm5)
+
+global_analysislm6 <- lm(funding_total_usd ~ gdp_per_capita + population + pop_dens_per_mi + literacy + markets3 + area_sq_mi + global_region, data=geographical_df)
+summary(global_analysislm6)
+anova(global_analysislm6)
+
+summary(lm(funding_total_usd ~ post_ipo_equity, data = geographical_df))
+anova(lm(funding_total_usd ~ post_ipo_equity, data = geographical_df))
+```
+
+
+
+
+
+
