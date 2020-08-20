@@ -1,0 +1,625 @@
+---
+title: "Project 1 Presentation FINAL"
+author: "Hudson Finch-Batista, Robert Verstraete, Antonio Villamayor"
+date: "8/9/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Data Importing and Cleaning/Tidying
+
+## Importing The Data (CPI Data and VC Investment Data from 1913 to 2014)
+```{r}
+library(plyr)
+library(anytime)
+library(dplyr)
+library(plotly)
+library(lubridate)
+library(ggplot2)
+library(hexbin)
+library(RColorBrewer)
+library(viridis)
+library(wesanderson)
+library(stringr)
+library(ggpubr)
+library(ggmap)
+setwd("~/Desktop/R Datasets/Data Science Datasets")
+vc_data <- read.csv("investments_VC.csv",na.strings = "",stringsAsFactors = FALSE)
+
+library("jsonlite")
+
+json_file <- 'https://datahub.io/core/cpi-us/datapackage.json'
+json_data <- fromJSON(paste(readLines(json_file), collapse=""))
+
+# get list of all resources:
+print(json_data$resources$name)
+
+# print all tabular data(if exists any)
+for(i in 1:length(json_data$resources$datahub$type)){
+  if(json_data$resources$datahub$type[i]=='derived/csv'){
+    path_to_file = json_data$resources$path[i]
+    data <- read.csv(url(path_to_file))
+  }
+}
+
+world_cities <- read.csv("worldcities.csv")
+geographical_df <- read.csv("geographical.csv")
+```
+
+
+
+## Structure, head, and tail of Data
+```{r}
+str(vc_data)
+head(vc_data)
+tail(vc_data)
+```
+
+
+
+## Mutate character variables into factors and dates 
+```{r}
+vc_data2 <- vc_data %>% mutate(category_list = as.factor(category_list), market = as.factor(market), status = as.factor(status), country_code = as.factor(country_code), state_code = as.factor(state_code), city = as.factor(city), founded_at = mdy(founded_at), first_funding_at = mdy(first_funding_at), last_funding_at = mdy(last_funding_at))
+```
+
+## Identify date issues
+```{r}
+
+# Identify dates where first funding occurs before company founded
+
+fund_date_issue <- vector(mode = "logical", length = nrow(vc_data2))
+
+for(i in 1:nrow(vc_data2)){
+  if(difftime(vc_data2[i,"founded_at"],vc_data2[i,"first_funding_at"], units = "days") > 0 & !is.na(vc_data2[i,"founded_at"]) & !is.na(vc_data2[i,"first_funding_at"])){
+    vc_data2[i,"first_funding_at"] = vc_data2[i,"founded_at"]
+    fund_date_issue[i] = TRUE
+  }
+}
+
+fund_date_issue2 <- data.frame(fund_date_issue)
+
+vc_data3 <- cbind(vc_data2,fund_date_issue2)
+
+# Identify dates in the founded_at column and set their year values equal to the founded_year value
+
+for(i in 1:nrow(vc_data3)){
+  if(!is.na(vc_data3[i,"founded_at"]) & vc_data3[i,"founded_at"] > 2014-12-13){
+    year(vc_data3[i,"founded_at"]) = vc_data3[i,"founded_year"] 
+    year(vc_data3[i,"first_funding_at"]) = vc_data3[i,"founded_year"]
+    year(vc_data3[i,"last_funding_at"]) = vc_data3[i,"founded_year"]
+  }
+}
+```
+
+
+## Remove commas from total funding column and extract month and quarter from founded_month and founded_quarter columns
+```{r}
+vc_data3$funding_total_usd<- as.numeric(gsub(",","",vc_data3$funding_total_usd))
+
+vc_data4 <- vc_data3 %>% mutate(founded_month = as.integer(substr(founded_month,6,7)), founded_quarter = as.factor(substr(founded_quarter,6,7)))
+```
+
+
+## Change founded_month integer variable to a factor with levels equal to the names of months
+```{r}
+month <- vector(mode = "character", length = nrow(vc_data4))
+
+for(i in 1:nrow(vc_data4)){
+  if(is.na(vc_data4[i,"founded_month"])){
+    month[i] = NA
+  }else if(vc_data4[i,"founded_month"] == 1){
+    month[i] = "January"
+  } else if(vc_data4[i,"founded_month"] == 2){
+    month[i] = "February"
+  } else if(vc_data4[i,"founded_month"] == 3){
+    month[i] = "March"
+  }else if(vc_data4[i,"founded_month"] == 4){
+    month[i] = "April"
+  }else if(vc_data4[i,"founded_month"] == 5){
+    month[i] = "May"
+  }else if(vc_data4[i,"founded_month"] == 6){
+    month[i] = "June"
+  }else if(vc_data4[i,"founded_month"] == 7){
+    month[i] = "July"
+  }else if(vc_data4[i,"founded_month"] == 8){
+    month[i] = "August"
+  }else if(vc_data4[i,"founded_month"] == 9){
+    month[i] = "September"
+  }else if(vc_data4[i,"founded_month"] == 10){
+    month[i] = "October"
+  }else if(vc_data4[i,"founded_month"] == 11){
+    month[i] = "November"
+  }else if(vc_data4[i,"founded_month"] == 12){
+    month[i] = "December"
+  }
+}
+
+for(i in 1:nrow(vc_data4)){
+  vc_data4[i,12] = month[i]
+}
+
+vc_data5<- vc_data4 %>% mutate(founded_month = as.factor(founded_month))
+```
+
+
+## Group related market variable categories together to reduce the number of categories
+```{r}
+markets2 <- vector(mode = "character", length = nrow(vc_data5))
+
+markets3 <- factor(markets2,levels = c("Internet", "Big Data Analytics/Security", "Apps/Social Media", "Energy","Health/Medicine/Biotech", "Finance","Other"))
+
+vc_data_clean <- cbind(vc_data5,markets3)
+
+for(i in 1:nrow(vc_data5)){
+  if(is.na(vc_data5[i,"market"])){
+    vc_data_clean[i,"markets3"] = NA
+  } else if(str_detect(vc_data5[i,"market"],"Web") | str_detect(vc_data5[i,"market"],"Internet") | str_detect(vc_data5[i,"market"],"Cloud") | str_detect(vc_data5[i,"market"],"IT") | str_detect(vc_data5[i,"market"],"E-Commerce") | str_detect(vc_data5[i,"market"],"Online") | str_detect(vc_data5[i,"market"],"Information") | str_detect(vc_data5[i,"market"],"Enterprise")){
+    vc_data_clean[i,"markets3"] = "Internet"
+  } else if(str_detect(vc_data5[i,"market"],"Augmented Reality") | str_detect(vc_data5[i,"market"],"Data") | str_detect(vc_data5[i,"market"],"Artificial Intelligence") | str_detect(vc_data5[i,"market"],"Cyber") | str_detect(vc_data5[i,"market"],"Security") | str_detect(vc_data5[i,"market"],"Machine Learning") | str_detect(vc_data5[i,"market"],"Analytics") | str_detect(vc_data5[i,"market"],"Algorithms")){
+    vc_data_clean[i,"markets3"] = "Big Data Analytics/Security"
+  } else if(str_detect(vc_data5[i,"market"],"Mobile") | str_detect(vc_data5[i,"market"],"Social")){
+    vc_data_clean[i,"markets3"] = "Apps/Social Media"
+  } else if(str_detect(vc_data5[i,"market"],"Energy") | str_detect(vc_data5[i,"market"],"Biofeuls") | str_detect(vc_data5[i,"market"],"Biomass") | str_detect(vc_data5[i,"market"],"Clean") | str_detect(vc_data5[i,"market"],"Green") | str_detect(vc_data5[i,"market"],"Natural") | str_detect(vc_data5[i,"market"],"Oil") | str_detect(vc_data5[i,"market"],"Fuels") | str_detect(vc_data5[i,"market"],"Renewable")){
+    vc_data_clean[i,"markets3"] = "Energy"
+  } else if(str_detect(vc_data5[i,"market"],"Health") | str_detect(vc_data5[i,"market"],"Biometrics") | str_detect(vc_data5[i,"market"],"Biotechnology") | str_detect(vc_data5[i,"market"],"Medical")){
+    vc_data_clean[i,"markets3"] = "Health/Medicine/Biotech"
+  } else if(str_detect(vc_data5[i,"market"],"Finance") | str_detect(vc_data5[i,"market"],"Financial") | str_detect(vc_data5[i,"market"],"Banking") | str_detect(vc_data5[i,"market"],"Bitcoin") | str_detect(vc_data5[i,"market"],"P2P")){
+    vc_data_clean[i,"markets3"] = "Finance"
+  } else {
+    vc_data_clean[i,"markets3"] = "Other"
+  }
+}
+
+```
+
+
+## Create categorical variable for numerical venture variable 
+```{r}
+vc_data_clean2 <- vc_data_clean %>% filter(fund_date_issue != TRUE, !is.na(venture), !is.na(first_funding_at), venture > 0)
+
+vc_fund_cats1 <- vc_data_clean2$venture
+
+range(vc_data_clean2$venture)
+
+vc_data_clean2$venture_cats <- cut(vc_fund_cats1, 20, labels = c("0 to 117 million", "117 to 235 million","235 to 352 million","352 to 470 million","470 to 588 million","588 to 705 million","705 to 823 million","823 to 940 million","940 million to 1 billion","1 to 1.175 billion","1.17 to 1.3 billion","1.3 to 1.4 billion","1.4 to 1.53 billion","1.53 to 1.64 billion","1.64 to 1.76 billion", "1.76 to 1.88 billion", "1.88 to 1.99 billion","1.99 to 2.11 billion","2.11 to 2.23 billion","2.23 to 2.35 billion"))
+```
+
+
+
+## Take a sample of 500 observations of venture funding and adjust the nominal venture funding for inflation such that funding from any time period is expressed in 2014 prices
+```{r}
+real_venture <-vector(mode = "numeric", length = nrow(vc_data_clean2))
+vc_data_clean2 <- cbind(vc_data_clean2,real_venture)
+
+set.seed(123)
+vc_real <- sample_n(vc_data_clean2,500)
+
+for(i in 1:nrow(data)){
+  for(j in 1:nrow(vc_real)){
+if(!is.na(vc_real[j,"first_funding_at"])  & !is.na(vc_real[j,"venture"]) & difftime(vc_real[j,"first_funding_at"], data[i,"Date"], units = "days") >= 0 & difftime(vc_real[j,"first_funding_at"], data[i,"Date"], units = "days") < 31){
+    vc_real[j,"real_venture"] = vc_real[j,"venture"]*(data[1213,"Index"]/data[i,"Index"])
+}
+}
+}
+
+vc_fund_cats1 <- vc_real$real_venture
+
+range(vc_real$real_venture)
+
+vc_real$venture_cats <- cut(vc_fund_cats1, 10, labels = c("0 to 32 million", "32 to 64 million","64 to 96 million","96 to 128 million","128 to 160 million","160 to 192 million","192 to 224 million","224 to 256 million","256 to 288 million","288 to 320 million"))
+
+vc_data_clean3 <- vc_data_clean %>% filter(!is.na(post_ipo_equity), post_ipo_equity > 0)
+
+set.seed(345)
+vc_real2 <- sample_n(vc_data_clean3,158)
+
+for(i in 1:nrow(data)){
+  for(j in 1:nrow(vc_real2)){
+if(!is.na(vc_real2[j,"first_funding_at"])  & !is.na(vc_real2[j,"post_ipo_equity"]) & difftime(vc_real2[j,"first_funding_at"], data[i,"Date"], units = "days") >= 0 & difftime(vc_real2[j,"first_funding_at"], data[i,"Date"], units = "days") < 31){
+    vc_real2[j,"post_ipo_equity"] = vc_real2[j,"post_ipo_equity"]*(data[1213,"Index"]/data[i,"Index"])
+}
+}
+}
+
+```
+
+
+# Exploratory Data Analysis
+
+```{r}
+vc_data_clean2 <- vc_data_clean2 %>% mutate(time_period = case_when(founded_year < 1990~"1913 to 1990",founded_year > 1990~"1990 to 2014"))
+head(vc_data_clean2)
+
+vc_real <- vc_real %>% mutate(time_period = case_when(founded_year < 1990~"1913 to 1990",founded_year > 1990~"1990 to 2014"), real_venture = as.integer(real_venture))
+head(vc_real)
+
+vc_real2 <- vc_real2 %>% mutate(time_period = case_when(founded_year < 1990~"1913 to 1990",founded_year > 1990~"1990 to 2014"))
+head(vc_real2)
+```
+
+
+## Histograms
+```{r}
+options(scipen = 999)
+
+# Is the number of companies by real funding amount normally distributed?
+vc_real %>% filter(!is.na(time_period)) %>%  ggplot() + geom_histogram(mapping = aes(x = real_venture, color = markets3), bins = 50) + scale_x_continuous("Real Venture Funding Amount", breaks = seq(0,100000000,50000000), limits = c(0,100000000)) + ylab("Count of Companies") + ggtitle("Number of Companies by Funding Amount") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period)
+
+# Is the number of companies by nominal venture funding amount normally distributed?
+vc_data_clean2 %>% filter(!is.na(time_period)) %>% ggplot() + geom_histogram(mapping = aes(x = venture, color = status), bins = 50) + scale_x_continuous("Nominal Venture Funding Amount", breaks = seq(0,100000000,50000000), limits = c(0,100000000)) + ylab("Count of Companies") + ggtitle("Number of Companies by Funding Amount") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + scale_color_manual(values = wes_palette("FantasticFox1", n = 4))
+
+# Is the number of companies by funding round normally distributed?
+vc_data_clean2 %>% filter(!is.na(time_period)) %>% ggplot() + geom_histogram(mapping = aes(x = funding_rounds, color = markets3), bins = 50) + xlab("Funding Rounds") + ylab("Count of Companies") + ggtitle("Number of Companies by Funding Rounds") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period)
+
+vc_data_clean2 %>% filter(!is.na(time_period)) %>% ggplot() + geom_histogram(mapping = aes(x = funding_rounds, color = status), bins = 50) + xlab("Funding Rounds") + ylab("Count of Companies") + ggtitle("Number of Companies by Funding Rounds") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period)+ scale_color_manual(values = wes_palette("FantasticFox1", n = 4))
+```
+
+
+## Bar charts
+```{r}
+# Does the proportion of status by funding amount vary over time?
+vc_data_clean2 %>% filter(!is.na(time_period)) %>%  ggplot(mapping = aes(x = venture_cats, fill = status)) + geom_bar(alpha = 3/4, position = "fill", color = "black") + xlab("Venture Funding Categories") + ylab("Proportion of Companies") + ggtitle("Proportion of Status by Funding Category Over Time") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + coord_flip() + scale_fill_manual(values = wes_palette("FantasticFox1", n = 4))
+
+# Does the proportion of markets by funding amount vary over time?
+vc_data_clean2 %>% filter(!is.na(time_period)) %>% ggplot(mapping = aes(x = venture_cats, fill = markets3)) + geom_bar(position = "fill") + xlab("Real Venture Funding Categories") + ylab("Proportion of Companies") + ggtitle("Proportion of Markets by Funding Category Over Time") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + coord_flip()
+
+# Does the proportion of status by funding rounds vary over time?
+vc_data_clean2 %>% filter(!is.na(time_period)) %>% ggplot(mapping = aes(x = funding_rounds, fill = status)) + geom_bar(alpha = 3/4, position = "fill",color = "black") + xlab("Funding Rounds") + ylab("Proportion of Companies") + ggtitle("Proportion of Status by Funding Rounds Over Time") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + coord_flip() + scale_fill_manual(values = wes_palette("FantasticFox1", n = 4))
+
+# Does the proportion of markets by funding rounds vary over time?
+vc_data_clean2 %>% filter(!is.na(time_period)) %>% ggplot(mapping = aes(x = funding_rounds, fill = markets3)) + geom_bar(position = "fill") + xlab("Funding Rounds") + ylab("Proportion of Companies") + ggtitle("Proportion of Markets by Funding Rounds Over Time") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + coord_flip()
+```
+
+# Heatmaps
+```{r}
+vc_data_clean2 %>% count(markets3, status) %>% 
+  ggplot(mapping = aes(x = markets3, y = status)) +
+  geom_tile(mapping = aes(fill = n)) + xlab("Markets") + ylab("Status") + ggtitle("Markets by Status") + theme(plot.title = element_text(hjust = 0.5)) + coord_flip()
+
+vc_data_clean2 %>% filter(funding_rounds <= 10) %>% count(funding_rounds, markets3) %>% 
+  ggplot(mapping = aes(x = funding_rounds, y = markets3)) +
+  geom_tile(mapping = aes(fill = n))+ xlab("Funding Rounds") + ylab("Markets") + ggtitle("Markets by Funding Rounds") + theme(plot.title = element_text(hjust = 0.5))
+
+vc_data_clean2 %>% count(funding_rounds, venture_cats) %>% 
+  ggplot(mapping = aes(x = funding_rounds, y = venture_cats)) +
+  geom_tile(mapping = aes(fill = n))+ xlab("Funding Rounds") + ylab("Venture Funding Amounts") + ggtitle("Funding Rounds by Venture Funding Amounts") + theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+## Boxplots
+```{r}
+# Do funding amounts by status differ over time?
+vc_real %>% filter(!is.na(time_period)) %>% ggplot() + geom_boxplot(mapping = aes(x = status, y = real_venture, fill = status)) + scale_x_discrete("Status") + scale_y_continuous("Real Venture Funding Amount", limits = c(0,100000000), breaks = seq(0,100000000,25000000)) + ggtitle("Venture Funding by Status") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + scale_fill_brewer(palette = "Greens")
+
+# Do funding amounts by market differ over time?
+vc_real %>% filter(!is.na(time_period)) %>% ggplot() + geom_boxplot(mapping = aes(x = markets3, y = real_venture, fill = markets3)) + scale_x_discrete("Markets") + scale_y_continuous("Real Venture Funding Amount", limits = c(0,30000000), breaks = seq(0,30000000,15000000)) + ggtitle("Venture Funding by Market") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + coord_flip() + scale_fill_brewer(palette = "PiYG")
+
+
+# Do funding rounds by status differ over time?
+vc_data_clean2 %>% filter(!is.na(time_period)) %>% ggplot() + geom_boxplot(mapping = aes(x = status, y = funding_rounds, fill = status)) + xlab("Status") + ylab("Funding Rounds") + ggtitle("Funding Rounds by Status") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period)+ scale_fill_brewer(palette = "Greens")
+
+# Do funding rounds by market differ over time?
+vc_data_clean2 %>% filter(!is.na(time_period)) %>% ggplot() + geom_boxplot(mapping = aes(x = markets3, y = funding_rounds, fill = markets3)) + xlab("Market") + ylab("Funding Rounds") + ggtitle("Funding Rounds by Market") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + coord_flip() + scale_fill_brewer(palette = "PiYG")
+
+
+# Does post_IPO value by status differ over time?
+vc_real2 %>% filter(!is.na(post_ipo_equity), post_ipo_equity >0, post_ipo_equity < 1000000000, !is.na(time_period)) %>% ggplot() + geom_boxplot(mapping = aes(x = status, y = post_ipo_equity, fill = status)) + xlab("Status") + scale_y_continuous("Post-IPO Equity", limits = c(0,250000000), breaks = seq(0,250000000,125000000)) + ggtitle("Post-IPO Value by Status") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + scale_fill_brewer(palette = "Greens")
+
+vc_real2 %>% filter(!is.na(post_ipo_equity), post_ipo_equity >0, !is.na(time_period)) %>% ggplot() + geom_boxplot(mapping = aes(x = status, y = post_ipo_equity, fill = status)) + xlab("Status") + ylab("Post-IPO Equity") + ggtitle("Post-IPO Value by Status") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + scale_fill_brewer(palette = "Greens")
+
+# Does post-IPO value by market differ over time?
+vc_real2 %>% filter(!is.na(post_ipo_equity), post_ipo_equity >0, !is.na(time_period)) %>% ggplot() + geom_boxplot(mapping = aes(x = markets3, y = post_ipo_equity, fill = markets3)) + scale_x_discrete("Market") + scale_y_continuous("Post-IPO Equity", limits = c(0,100000000), breaks = seq(0,100000000,50000000)) + ggtitle("Post-IPO Value by Market") + theme(plot.title = element_text(hjust = 0.5)) + facet_wrap(.~time_period) + coord_flip() + scale_fill_brewer(palette = "PiYG")
+
+```
+
+
+## Scatterplots
+```{r}
+# Mean Nominal Venture Funding Over Time
+nom_fund_time <- vc_data_clean2 %>% group_by(founded_year) %>% mutate(mean_funding = mean(venture)) %>% filter(!is.na(venture)) %>% ggplot() + geom_point(mapping = aes(x = founded_year, y = mean_funding)) + geom_smooth(mapping = aes(x = founded_year, y = mean_funding), se = FALSE) + xlab("Founded Year") + ylab("Mean Venture Funding") + ggtitle("Mean Nominal Venture Funding Over Time by Market") + theme(plot.title = element_text(hjust = 0.5))
+
+nom_fund_time <- ggplotly(nom_fund_time)
+nom_fund_time
+
+# Mean Real Venture Funding Over Time
+real_fund_time <- vc_real %>% group_by(founded_year) %>% mutate(mean_funding = mean(real_venture)) %>% filter(!is.na(real_venture)) %>% ggplot() + geom_point(mapping = aes(x = founded_year, y = mean_funding)) + geom_smooth(mapping = aes(x = founded_year, y = mean_funding), se = FALSE) + xlab("Founded Year") + ylab("Mean Venture Funding") + ggtitle("Mean Real Venture Funding Over Time by Market") + theme(plot.title = element_text(hjust = 0.5))
+
+real_fund_time <- ggplotly(real_fund_time)
+real_fund_time
+
+# Mean Nominal Post-IPO Equity
+nom_post_ipo_equity_plot <- vc_data_clean2 %>% filter(post_ipo_equity >0) %>% group_by(founded_year) %>% mutate(mean_post_ipo_equity = mean(post_ipo_equity)) %>% filter(!is.na(post_ipo_equity)) %>% ggplot(mapping = aes(x = founded_year, y = mean_post_ipo_equity)) + geom_point() + geom_smooth(se = FALSE)+ xlab("Founded Year") + ylab("Mean Nominal Post-IPO Equity") + ggtitle("Mean Nominal Post-IPO Equity Over Time") + theme(plot.title = element_text(hjust = 0.5))
+
+nom_post_ipo_equity_plot <- ggplotly(nom_post_ipo_equity_plot)
+nom_post_ipo_equity_plot
+
+# Mean Real Post-IPO Equity
+real_post_ipo_equity_plot <- vc_real2 %>% group_by(founded_year) %>% mutate(mean_post_ipo_equity = mean(post_ipo_equity)) %>% filter(!is.na(post_ipo_equity)) %>% ggplot(mapping = aes(x = founded_year, y = mean_post_ipo_equity)) + geom_point() + geom_smooth(se = FALSE) + xlab("Founded Year") + ylab("Mean Real Post-IPO Equity") + ggtitle("Mean Real Post-IPO Equity Over Time") + theme(plot.title = element_text(hjust = 0.5))
+
+real_post_ipo_equity_plot<- ggplotly(real_post_ipo_equity_plot)
+real_post_ipo_equity_plot
+
+real_post_ipo_equity_plot2 <- vc_real2 %>% group_by(founded_year) %>% filter(post_ipo_equity < 6000000000)  %>% mutate(mean_post_ipo_equity = mean(post_ipo_equity)) %>% filter(!is.na(post_ipo_equity)) %>% ggplot(mapping = aes(x = founded_year, y = mean_post_ipo_equity)) + geom_point() + geom_smooth(se = FALSE) + xlab("Founded Year") + ylab("Mean Real Post-IPO Equity") + ggtitle("Mean Real Post-IPO Equity Over Time") + theme(plot.title = element_text(hjust = 0.5))
+
+real_post_ipo_equity_plot2<- ggplotly(real_post_ipo_equity_plot2)
+real_post_ipo_equity_plot2
+
+
+
+# Nominal Venture Funding Over Time
+vc_data_clean2 %>% filter(venture > 0) %>% ggplot(mapping = aes(x = founded_year, y = venture)) + geom_hex() + xlab("Founded Year") + ylab("Venture Funding") + ggtitle("Nominal Venture Funding Over Time by Market") + theme(plot.title = element_text(hjust = 0.5)) + scale_fill_viridis()
+
+# Real Venture Funding Over Time by Market
+vc_real %>% filter(real_venture > 1000000) %>% ggplot(mapping = aes(x = founded_year, y = real_venture, color = markets3)) + geom_point(position = "jitter") + xlab("Founded Year") + ylab("Venture Funding") + ggtitle("Real Venture Funding Over Time by Market") + theme(plot.title = element_text(hjust = 0.5))
+
+vc_real %>% filter(real_venture > 1000000) %>% ggplot(mapping = aes(x = founded_year, y = real_venture, color = markets3)) + geom_smooth(se = FALSE) + xlab("Founded Year") + ylab("Venture Funding") + ggtitle("Real Venture Funding Over Time by Market") + theme(plot.title = element_text(hjust = 0.5))
+
+
+# Real Venture Funding Over Time by Status
+vc_real %>% filter(real_venture > 1000000) %>% ggplot(mapping = aes(x = founded_year, y = real_venture, color = status)) + geom_point(position = "jitter") + xlab("Founded Year") + ylab("Venture Funding") + ggtitle("Real Venture Funding Over Time by Status") + theme(plot.title = element_text(hjust = 0.5)) + scale_color_manual(values = wes_palette("FantasticFox1", n = 4))
+
+vc_real %>% filter(real_venture > 1000000) %>% ggplot(vc_real, mapping = aes(x = founded_year, y = real_venture, color = status)) + geom_smooth(se = FALSE) + xlab("Founded Year") + ylab("Venture Funding") + ggtitle("Real Venture Funding Over Time by Status") + theme(plot.title = element_text(hjust = 0.5)) + scale_color_manual(values = wes_palette("FantasticFox1", n = 4))
+
+
+
+# Nominal Post-IPO Equity Over Time
+vc_data_clean %>% filter(!is.na(post_ipo_equity), post_ipo_equity > 0) %>% ggplot(mapping = aes(x = founded_year, y = post_ipo_equity)) + geom_hex() + geom_smooth(se = FALSE) + scale_fill_viridis() + xlab("Founded Year") + ylab("Post-IPO Equity") + ggtitle("Nominal Post-IPO Equity Value Over Time") + theme(plot.title = element_text(hjust = 0.5))
+
+# Real Post-IPO Equity Over Time
+vc_real2 %>% filter(!is.na(post_ipo_equity), post_ipo_equity > 0) %>% ggplot(mapping = aes(x = founded_year, y = post_ipo_equity)) + geom_hex() + geom_smooth(se = FALSE)+ scale_fill_viridis()+ xlab("Founded Year") + ylab("Post-IPO Equity") + ggtitle("Real Post-IPO Equity Value Over Time") + theme(plot.title = element_text(hjust = 0.5))
+
+vc_real2 %>% filter(!is.na(post_ipo_equity), post_ipo_equity > 0, post_ipo_equity < 6000000000) %>% ggplot(mapping = aes(x = founded_year, y = post_ipo_equity)) + geom_hex() + geom_smooth(se = FALSE)+ scale_fill_viridis()+ xlab("Founded Year") + ylab("Post-IPO Equity") + ggtitle("Real Post-IPO Equity Value Over Time")+ theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+
+```{r}
+USA <- vc_data_clean %>% filter(country_code == "USA") %>% select(c(1, 3, 4, 5, 6, 7, 9, 10, 12, 14, 18, 36))
+head(USA)
+unique(USA$market)
+unique(USA$city)
+```
+
+```{r}
+Int <- vc_data_clean %>% filter(market == " Education " | market == " Analytics " | market == " Travel " | market == " Agriculture " | market == " Security " | market == " World Domination ") %>% select(c(1, 3, 4, 5, 6, 7, 9, 10, 12, 14, 18, 36))
+head(Int)
+
+Computer <- USA %>% filter(market == " Big Data " | market == " Analytics " | market == " Cloud Data Services " | market == " Cloud Computing " | market == " Software " | market == " Enterprise Software " | market == " Data Security " | market == " Internet ")
+head(Computer)
+```
+
+```{r}
+Int <- Int %>% filter(!is.na(funding_total_usd))
+Computer <- Computer %>% filter(!is.na(funding_total_usd))
+
+plot1 <- Int %>% 
+  ggplot(aes(x = market, y = sum(funding_total_usd), fill = market))+
+  geom_col()+
+  coord_flip()+
+  xlab("Market")+
+  ylab("Total Funding")+
+  ggtitle("Random Markets - USA")
+plot1
+
+plot2 <- Computer %>% 
+  ggplot(aes(x = market, y = sum(funding_total_usd), fill = market))+
+  geom_col()+
+  coord_flip()+
+  xlab("Market")+
+  ylab("Total Funding (in billions USD)")+
+  ggtitle("Data Markets - USA")
+plot2
+```
+
+
+```{r}
+Comp1 <- Computer %>% select(2, 4) %>% group_by(market, status) %>% summarize(start_ups = n())
+head(Comp1)
+
+C1 <- Comp1 %>%
+  ggplot(aes(x = status, y = start_ups))+geom_point(data = subset(Comp1, market == " Analytics "))+ggtitle("Analytics")+coord_flip()
+
+C2 <- Comp1 %>%
+  ggplot(aes(x = status, y = start_ups))+geom_point(data = subset(Comp1, market == " Cloud Data Services "))+ggtitle("Cloud DS")+coord_flip()
+
+C3 <- Comp1 %>%
+  ggplot(aes(x = status, y = start_ups))+geom_point(data = subset(Comp1, market == " Big Data "))+ggtitle("Big Data")+coord_flip()
+
+C4 <- Comp1 %>%
+  ggplot(aes(x = status, y = start_ups))+geom_point(data = subset(Comp1, market == " Data Security "))+ggtitle("Data Security")+coord_flip()
+
+C5 <- Comp1 %>%
+  ggplot(aes(x = status, y = start_ups))+geom_point(data = subset(Comp1, market == " Cloud Computing "))+ggtitle("Cloud Comp")+coord_flip()
+
+C6 <- Comp1 %>%
+  ggplot(aes(x = status, y = start_ups))+geom_point(data = subset(Comp1, market == " Enterprise Software "))+coord_flip()+ggtitle("Enterprise")
+
+C7 <- Comp1 %>%
+  ggplot(aes(x = status, y = start_ups))+geom_point(data = subset(Comp1, market == " Internet "))+ggtitle("Internet")+coord_flip()
+
+C8 <- Comp1 %>%
+  ggplot(aes(x = status, y = start_ups))+geom_point(data = subset(Comp1, market == " Software "))+coord_flip()+ggtitle("Software")
+
+ggarrange(C1, C2, C3, C4, ncol = 2, nrow = 2)
+ggarrange(C5, C6, C7, C8, ncol = 2, nrow = 2)
+```
+
+
+
+```{r}
+CA1 <- USA %>% select(c(6)) %>% group_by(state_code) %>% summarize(compstate = n()) %>% mutate(Prob = compstate / sum(compstate))
+head(CA1)
+CA2 <- USA %>% select(c(8)) %>% group_by(funding_rounds) %>% summarize(tot_num_rounds = n()) %>% mutate(Prob = tot_num_rounds / sum(tot_num_rounds))
+head(CA2)
+
+pl1 <- CA1 %>% ggplot(aes(x = state_code, y = compstate))+geom_col()+coord_flip()+ggtitle("Start-Ups per State")
+plt2 <- CA2 %>% ggplot(aes(x = funding_rounds, y = Prob))+geom_col()+ggtitle("Probability of Funding Rounds")
+ggarrange(pl1, plt2, ncol = 2, nrow = 1)
+```
+
+
+
+```{r}
+#preparation for global map per region:
+
+long_vec <- world_cities %>% group_by(country_code) 
+lat_vec <- world_cities %>% group_by(country_code)
+
+long_vec2 <- long_vec %>% summarise(long = mean(longitude))
+
+lat_vec2 <- lat_vec %>% summarise(lat = mean(latitude))
+
+long_vec2
+lat_vec2
+
+longlat_df <- data.frame(long_vec2, lat_vec2)
+
+first_try <- merge(geographical_df, longlat_df)
+
+global_lat1 <- first_try %>% group_by(global_region)%>% filter(!is.na(lat))
+global_long1 <- first_try %>% group_by(global_region) %>% filter(!is.na(long))
+
+global_lat <- global_lat1 %>% summarise(lat = mean(lat))
+
+global_long <- global_long1 %>% summarise(long = mean(long))
+
+longlat_df2 <- data.frame(global_lat, global_long)
+second_try <- merge(geographical_df, longlat_df2)
+
+#preparation for global map per country
+long_vec <- world_cities %>% group_by(country_code) 
+lat_vec <- world_cities %>% group_by(country_code)
+
+long_vec2 <- long_vec %>% summarise(long = mean(longitude))
+
+
+
+lat_vec2 <- lat_vec %>% summarise(lat = mean(latitude))
+
+long_vec2
+lat_vec2
+
+
+longlat_df <- data.frame(long_vec2, lat_vec2)
+
+
+str(first_try$mean.latitude.)
+str(first_try$mean.longitude.)
+
+
+ggmap::register_google(key = "AIzaSyDHzroFLrEjkKvGLxCvARfEL8uvJawnaUs")
+
+
+
+#Global map pf funding per region:
+
+p1 <- ggmap(get_googlemap(center = c(lon = 0, lat = 0),
+                    zoom = 1, scale = 1,
+                    maptype ='terrain',
+                    color = 'color'))
+p1 + geom_point(aes(x = long, y = lat, colour = global_region, size = funding_total_usd), data = second_try) + xlim(-120,120) + ylim(-70, 70) + scale_size_continuous(range = c(1, 15))
+
+
+
+
+#Global map of funding per country:
+p <- ggmap(get_googlemap(center = c(lon = 0, lat = 0),
+                    zoom = 1, 
+                    scale = 1,
+                    maptype ='terrain',
+                    color = 'color'))
+p + geom_point(aes(x = long, y = lat, colour = country_code, size = funding_total_usd), data = first_try) + xlim(-120,120) + ylim(-70, 70) + scale_size_continuous(range = c(1, 20))
+
+f <- first_try %>% filter(funding_total_usd < 10000000, !is.na(markets3)) %>% ggplot(aes(x = markets3, y = funding_total_usd, fill = markets3)) + geom_boxplot() + coord_flip()
+
+f
+
+g <- first_try %>% filter(funding_total_usd < 10000000) %>% ggplot(aes(x = global_region, y = funding_total_usd, fill = global_region)) + geom_boxplot() + coord_flip()
+
+g
+
+z <- ggplot(data = first_try, aes(x = markets3, y = funding_total_usd, fill = markets3)) + geom_col() +coord_flip()
+
+z
+
+
+
+e <- ggplot(data = first_try, aes(x = literacy)) + geom_histogram(binwidth=10, aes(fill=funding_total_usd), colour="Black")
+
+e
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
